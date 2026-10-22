@@ -1,5 +1,7 @@
 name: Focused Linux validation
 on:
+  push:
+    branches: [validation/manifest-83-linux]
   workflow_dispatch:
 permissions:
   contents: read
