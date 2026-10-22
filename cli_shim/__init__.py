@@ -253,17 +253,15 @@ def discover_manifest(cmd_path: str) -> Dict[str, Any]:
                             })
                 break
         
-        # Detect JSON flag in help
-        json_hint_patterns = [
-            r'(--json\b|-o=json\b|--output=json\b|--format=json\b)',
-            r'(output format).*?(json)',
-            r'JSON\s+output',
-        ]
-        for pat in json_hint_patterns:
-            m = re.search(pat, help_text, re.IGNORECASE)
-            if m:
-                manifest["json_flag"] = m.group(1) if m.lastindex else "--json"
-                break
+        # Only advertise an explicit flag, not prose mentioning JSON output.
+        # A word boundary alone would also match the prefix of --json-lines.
+        json_flag = re.search(
+            r'(?<![\w-])(--json|-o=json|--output=json|--format=json)(?![\w=-])',
+            help_text,
+            re.IGNORECASE,
+        )
+        if json_flag:
+            manifest["json_flag"] = json_flag.group(1)
         
         # Detect non-interactive flag
         non_int_patterns = [
