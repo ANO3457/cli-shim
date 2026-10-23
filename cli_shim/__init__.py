@@ -223,36 +223,51 @@ def discover_manifest(cmd_path: str) -> Dict[str, Any]:
         help_text = result.stdout + result.stderr
         manifest["help_text"] = help_text[:2000]  # Truncate
         
-        # Extract commands from common help patterns
-        # Pattern: "Commands:" or "Available Commands:" followed by indented list
-        cmd_patterns = [
-            r'(?:Commands|Available Commands|SUBCOMMANDS):\s*\n((?:\s+\S+.*\n)+)',
-            r'^\s{2,}(\S+)\s{2,}.*$',  # Generic indented subcommand
-        ]
-        
-        for pattern in cmd_patterns:
-            matches = re.findall(pattern, help_text, re.MULTILINE)
-            if matches:
-                first = matches[0]
-                if isinstance(first, tuple):
-                    # Multi-line block match
-                    block = first[0] if first else ""
-                    for line in block.strip().split('\n'):
-                        cmd_match = re.match(r'\s+(\S+)', line)
-                        if cmd_match:
-                            manifest["commands"].append({
-                                "name": cmd_match.group(1),
-                                "description": line.strip(),
-                            })
-                else:
-                    for m in matches:
-                        if isinstance(m, str):
-                            manifest["commands"].append({
-                                "name": m,
-                                "description": "",
-                            })
-                break
-        
+        # Parse a command section line by line: horizontal indentation must
+        # not consume blank lines or following help sections.
+        section = re.search(
+            r'^([ \t]*)(?:Commands|Available Commands|SUBCOMMANDS):[ \t]*(?:\r?\n|$)',
+            help_text,
+            re.MULTILINE | re.IGNORECASE,
+        )
+        if section:
+            header_indent = len(section.group(1).expandtabs())
+            command_indent = None
+            for raw_line in help_text[section.end():].splitlines():
+                line = raw_line.expandtabs()
+                if not line.strip():
+                    break
+                indent = len(line) - len(line.lstrip())
+                if indent <= header_indent:
+                    break
+                if command_indent is None:
+                    command_indent = indent
+                if indent < command_indent:
+                    break
+                if indent > command_indent:
+                    if manifest["commands"]:
+                        previous = manifest["commands"][-1]
+                        previous["description"] = (
+                            previous["description"] + " " + line.strip()
+                        ).strip()
+                    continue
+                parts = line.strip().split(None, 1)
+                name = parts[0]
+                if name.startswith("-") or name.endswith(":"):
+                    break
+                manifest["commands"].append({
+                    "name": name,
+                    "description": parts[1] if len(parts) > 1 else "",
+                })
+        else:
+            # Retain discovery for help such as git's headerless command list.
+            for name, description in re.findall(
+                r'^[ \t]{2,}([^\s-]\S*)[ \t]{2,}(.*)$', help_text, re.MULTILINE
+            ):
+                manifest["commands"].append({
+                    "name": name, "description": description.strip(),
+                })
+
         # Detect JSON flag in help
         json_hint_patterns = [
             r'(--json\b|-o=json\b|--output=json\b|--format=json\b)',
