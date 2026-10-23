@@ -331,6 +331,10 @@ def run_shim(
         force_json: Force JSON output flag if CLI supports it
         non_interactive: Auto-add non-interactive flags
         timeout: Execution timeout in seconds
+
+    On timeout, return code 124 with captured partial output and a timeout
+    diagnostic on stderr. Partial streams use the same normalization as
+    completed commands.
     """
     if agent_mode is None:
         agent_mode = is_agent_mode() or not is_interactive_terminal()
@@ -368,8 +372,18 @@ def run_shim(
         
         return ShimResult(result.returncode, stdout, stderr, cmd)
     
-    except subprocess.TimeoutExpired:
-        return ShimResult(124, "", f"Command timed out after {timeout}s", cmd)
+    except subprocess.TimeoutExpired as exc:
+        # POSIX can expose bytes despite text=True; Windows can return the
+        # decoded streams after subprocess.run drains the killed child.
+        stdout, stderr = exc.stdout or "", exc.stderr or ""
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", errors="replace")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        stdout, stderr = split_output(stdout, stderr, agent_mode)
+        if stderr and not stderr.endswith("\n"):
+            stderr += "\n"
+        return ShimResult(124, stdout, f"{stderr}Command timed out after {timeout}s", cmd)
     except Exception as e:
         return ShimResult(1, "", str(e), cmd)
 

@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - None yet.
 
+### Fixed
+- Preserve captured stdout and stderr when a command times out, retaining
+  UTF-8 replacement decoding and agent-mode ANSI cleanup while returning
+  exit code 124 (#68).
+
 ## [0.1.0] - 2026-03-24
 
 ### Added
